@@ -30,3 +30,15 @@ class Claim(Base):
     amount = Column(Numeric(14, 2), nullable=False)
     status = Column(String(30), default="submitted")
     submitted_at = Column(DateTime, default=datetime.utcnow)
+
+class ClaimNote(Base):
+    __tablename__ = "claim_notes"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    claim_id = Column(String(36), ForeignKey("claims.id"), nullable=False)
+    note = Column(String(1000), nullable=True)
+    previous_status = Column(String(30), nullable=True)
+    new_status = Column(String(30), nullable=False)
+    is_override = Column(String(10), default="false")  # storing as string for SQLite simplicity
+    override_justification = Column(String(1000), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

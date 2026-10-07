@@ -13,6 +13,9 @@ import uuid as uuid_module
 from workflow import validate_transition
 from schemas import ClaimStatusUpdate
 
+from models import ClaimNote
+from schemas import ClaimNoteOut
+
 # This line creates the actual table in Postgres if it doesn't exist yet
 Base.metadata.create_all(bind=engine)
 
@@ -80,7 +83,6 @@ def get_claim(claim_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Claim not found")
     return claim
 
-
 @app.patch("/claims/{claim_id}/status", response_model=ClaimOut)
 def update_claim_status(claim_id: str, payload: ClaimStatusUpdate, db: Session = Depends(get_db)):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
@@ -94,7 +96,30 @@ def update_claim_status(claim_id: str, payload: ClaimStatusUpdate, db: Session =
     if error:
         raise HTTPException(status_code=422, detail=error)
 
+    previous_status = claim.status
     claim.status = payload.new_status
     db.commit()
     db.refresh(claim)
+
+    # BR-007: append-only history of every status change
+    note_entry = ClaimNote(
+        claim_id=claim.id,
+        note=payload.note,
+        previous_status=previous_status,
+        new_status=payload.new_status,
+        is_override="true" if payload.is_override else "false",
+        override_justification=payload.override_justification,
+    )
+    db.add(note_entry)
+    db.commit()
+
     return claim
+
+
+@app.get("/claims/{claim_id}/history", response_model=list[ClaimNoteOut])
+def get_claim_history(claim_id: str, db: Session = Depends(get_db)):
+    claim = db.query(Claim).filter(Claim.id == claim_id).first()
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    return db.query(ClaimNote).filter(ClaimNote.claim_id == claim_id).order_by(ClaimNote.created_at).all()

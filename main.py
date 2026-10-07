@@ -10,6 +10,9 @@ from models import Claim
 from schemas import ClaimCreate, ClaimOut
 import uuid as uuid_module
 
+from workflow import validate_transition
+from schemas import ClaimStatusUpdate
+
 # This line creates the actual table in Postgres if it doesn't exist yet
 Base.metadata.create_all(bind=engine)
 
@@ -75,4 +78,23 @@ def get_claim(claim_id: str, db: Session = Depends(get_db)):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
+    return claim
+
+
+@app.patch("/claims/{claim_id}/status", response_model=ClaimOut)
+def update_claim_status(claim_id: str, payload: ClaimStatusUpdate, db: Session = Depends(get_db)):
+    claim = db.query(Claim).filter(Claim.id == claim_id).first()
+    if not claim:
+        raise HTTPException(status_code=404, detail="Claim not found")
+
+    if payload.is_override and not payload.override_justification:
+        raise HTTPException(status_code=422, detail="Override requires a justification")
+
+    error = validate_transition(claim.status, payload.new_status, payload.is_override)
+    if error:
+        raise HTTPException(status_code=422, detail=error)
+
+    claim.status = payload.new_status
+    db.commit()
+    db.refresh(claim)
     return claim

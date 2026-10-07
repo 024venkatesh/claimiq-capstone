@@ -35,3 +35,9 @@ class ClaimOut(ClaimCreate):
 
     class Config:
         from_attributes = True
+
+class ClaimStatusUpdate(BaseModel):
+    new_status: str
+    note: str | None = None
+    is_override: bool = False
+    override_justification: str | None = None

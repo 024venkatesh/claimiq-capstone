@@ -11,7 +11,7 @@ from schemas import (
     UserCreate, UserOut, LoginRequest, TokenResponse,
 )
 from workflow import validate_transition
-from security import hash_password, verify_password, create_access_token, get_current_user
+from security import hash_password, verify_password, create_access_token, get_current_user, require_role
 
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -140,9 +140,12 @@ def get_claim_history(claim_id: str, db: Session = Depends(get_db)):
 
 
 # ---------------- USERS & AUTH ----------------
-
 @app.post("/users", response_model=UserOut)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin")),
+):
     existing = db.query(User).filter(User.email == user.email).first()
     if existing:
         raise HTTPException(status_code=422, detail="Email already registered")

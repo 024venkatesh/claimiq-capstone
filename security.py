@@ -39,3 +39,11 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return payload
+
+def require_role(*allowed_roles: str):
+    def role_checker(current_user: dict = Depends(get_current_user)):
+        user_role = current_user.get("role")
+        if user_role not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Access denied: insufficient permissions")
+        return current_user
+    return role_checker

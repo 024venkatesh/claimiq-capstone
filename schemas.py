@@ -32,6 +32,7 @@ class ClaimOut(ClaimCreate):
     id: str
     claim_number: str
     status: str
+    assigned_adjuster_id: str | None = None
 
     class Config:
         from_attributes = True
@@ -63,6 +64,7 @@ class UserCreate(BaseModel):
     password: str
     full_name: str
     role: str = "support_agent"
+    region: str | None = None
 
 
 class UserOut(BaseModel):
@@ -70,6 +72,7 @@ class UserOut(BaseModel):
     email: str
     full_name: str
     role: str
+    region: str | None
 
     class Config:
         from_attributes = True

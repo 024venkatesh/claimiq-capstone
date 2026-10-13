@@ -80,8 +80,21 @@ def create_claim(claim: ClaimCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/claims", response_model=list[ClaimOut])
-def list_claims(db: Session = Depends(get_db)):
-    return db.query(Claim).all()
+def list_claims(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    query = db.query(Claim)
+
+    user_role = current_user.get("role")
+
+    # BR-004: Adjusters can only view claims assigned to them or their region
+    if user_role == "claims_adjuster":
+        user_email = current_user.get("sub")
+        user = db.query(User).filter(User.email == user_email).first()
+
+        query = query.filter(
+            (Claim.assigned_adjuster_id == user.id) | (Claim.region == user.region)
+        )
+
+    return query.all()
 
 
 @app.get("/claims/{claim_id}", response_model=ClaimOut)
@@ -155,6 +168,7 @@ def create_user(
         hashed_password=hash_password(user.password),
         full_name=user.full_name,
         role=user.role,
+        region=user.region,
     )
     db.add(new_user)
     db.commit()

@@ -29,6 +29,7 @@ class Claim(Base):
     region = Column(String(100), nullable=False)
     amount = Column(Numeric(14, 2), nullable=False)
     status = Column(String(30), default="submitted")
+    assigned_adjuster_id = Column(String(36), ForeignKey("users.id"), nullable=True)  # NEW
     submitted_at = Column(DateTime, default=datetime.utcnow)
 
 class ClaimNote(Base):
@@ -51,4 +52,5 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
     role = Column(String(30), nullable=False, default="support_agent")
+    region = Column(String(100), nullable=True)  # NEW
     is_active = Column(String(10), default="true")

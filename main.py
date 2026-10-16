@@ -15,20 +15,21 @@ from security import hash_password, verify_password, create_access_token, get_cu
 
 from fastapi.security import OAuth2PasswordRequestForm
 
-# This line creates all tables if they don't exist yet
+from analytics import build_claims_analytics
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
 
-@app.get("/")
+@app.get("/", tags=["Health"])
 def read_root():
     return {"message": "ClaimIQ is alive!"}
 
 
 # ---------------- POLICIES ----------------
 
-@app.post("/policies", response_model=PolicyOut)
+@app.post("/policies", response_model=PolicyOut, tags=["Policies"])
 def create_policy(
     policy: PolicyCreate,
     db: Session = Depends(get_db),
@@ -41,7 +42,7 @@ def create_policy(
     return new_policy
 
 
-@app.get("/policies/{policy_id}", response_model=PolicyOut)
+@app.get("/policies/{policy_id}", response_model=PolicyOut, tags=["Policies"])
 def get_policy(policy_id: str, db: Session = Depends(get_db)):
     policy = db.query(Policy).filter(Policy.id == policy_id).first()
     if not policy:
@@ -49,16 +50,15 @@ def get_policy(policy_id: str, db: Session = Depends(get_db)):
     return policy
 
 
-@app.get("/policies", response_model=list[PolicyOut])
+@app.get("/policies", response_model=list[PolicyOut], tags=["Policies"])
 def list_policies(db: Session = Depends(get_db)):
     return db.query(Policy).all()
 
 
 # ---------------- CLAIMS ----------------
 
-@app.post("/claims", response_model=ClaimOut)
+@app.post("/claims", response_model=ClaimOut, tags=["Claims"])
 def create_claim(claim: ClaimCreate, db: Session = Depends(get_db)):
-    # BR-002: claim must link to a valid, active policy
     policy = db.query(Policy).filter(Policy.id == claim.policy_id).first()
     if not policy:
         raise HTTPException(status_code=422, detail="Policy not found")
@@ -79,17 +79,14 @@ def create_claim(claim: ClaimCreate, db: Session = Depends(get_db)):
     return new_claim
 
 
-@app.get("/claims", response_model=list[ClaimOut])
+@app.get("/claims", response_model=list[ClaimOut], tags=["Claims"])
 def list_claims(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     query = db.query(Claim)
-
     user_role = current_user.get("role")
 
-    # BR-004: Adjusters can only view claims assigned to them or their region
     if user_role == "claims_adjuster":
         user_email = current_user.get("sub")
         user = db.query(User).filter(User.email == user_email).first()
-
         query = query.filter(
             (Claim.assigned_adjuster_id == user.id) | (Claim.region == user.region)
         )
@@ -97,7 +94,7 @@ def list_claims(db: Session = Depends(get_db), current_user: dict = Depends(get_
     return query.all()
 
 
-@app.get("/claims/{claim_id}", response_model=ClaimOut)
+@app.get("/claims/{claim_id}", response_model=ClaimOut, tags=["Claims"])
 def get_claim(claim_id: str, db: Session = Depends(get_db)):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
@@ -105,7 +102,7 @@ def get_claim(claim_id: str, db: Session = Depends(get_db)):
     return claim
 
 
-@app.patch("/claims/{claim_id}/status", response_model=ClaimOut)
+@app.patch("/claims/{claim_id}/status", response_model=ClaimOut, tags=["Claims"])
 def update_claim_status(claim_id: str, payload: ClaimStatusUpdate, db: Session = Depends(get_db)):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
@@ -123,7 +120,6 @@ def update_claim_status(claim_id: str, payload: ClaimStatusUpdate, db: Session =
     db.commit()
     db.refresh(claim)
 
-    # BR-007: append-only history of every status change
     note_entry = ClaimNote(
         claim_id=claim.id,
         note=payload.note,
@@ -138,7 +134,7 @@ def update_claim_status(claim_id: str, payload: ClaimStatusUpdate, db: Session =
     return claim
 
 
-@app.get("/claims/{claim_id}/history", response_model=list[ClaimNoteOut])
+@app.get("/claims/{claim_id}/history", response_model=list[ClaimNoteOut], tags=["Claims"])
 def get_claim_history(claim_id: str, db: Session = Depends(get_db)):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
@@ -153,7 +149,8 @@ def get_claim_history(claim_id: str, db: Session = Depends(get_db)):
 
 
 # ---------------- USERS & AUTH ----------------
-@app.post("/users", response_model=UserOut)
+
+@app.post("/users", response_model=UserOut, tags=["Users"])
 def create_user(
     user: UserCreate,
     db: Session = Depends(get_db),
@@ -176,7 +173,7 @@ def create_user(
     return new_user
 
 
-@app.post("/auth/login", response_model=TokenResponse)
+@app.post("/auth/login", response_model=TokenResponse, tags=["Authentication"])
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -184,3 +181,13 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
     token = create_access_token(user.email, user.role)
     return TokenResponse(access_token=token)
+
+
+# ---------------- ANALYTICS ----------------
+
+@app.get("/analytics/claims", tags=["Analytics"])
+def get_claims_analytics(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_role("admin", "claims_manager")),
+):
+    return build_claims_analytics(db)
